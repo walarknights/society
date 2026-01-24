@@ -233,6 +233,56 @@ app.post('/setArticle', async (c) => {
     }
   })
 
+app.post('/addView', async (c) => {
+  const body = await c.req.parseBody()
+  const articleId = body.articleId
+  if (!articleId) {
+    return c.json({ message: '缺少文章ID' }, 400)
+  }
+
+  const db = c.env.DB
+  try {
+    const result = await db
+      .prepare('UPDATE article SET views = views + 1 WHERE id = ?')
+      .bind(articleId)
+      .run()
+
+    if (!result.success) {
+      return c.json({ message: '未找到对应文章' }, 404)
+    }
+
+    return c.json({ message: '阅读量增加成功' }, 200)
+  } catch (error) {
+    console.error('AddView error:', error)
+    return c.json({ message: '服务器内部错误' }, 500)
+  }
+})
+
+app.post('/addLike', async (c) => {
+  const body = await c.req.parseBody()
+  const articleId = body.articleId
+  if (!articleId) {
+    return c.json({ message: '缺少文章ID' }, 400)
+  }
+
+  const db = c.env.DB
+  try {
+    const result = await db
+      .prepare('UPDATE article SET likes = likes + 1 WHERE id = ?')
+      .bind(articleId)
+      .run()
+
+    if (!result.success) {
+      return c.json({ message: '未找到对应文章' }, 404)
+    }
+
+    return c.json({ message: '点赞成功' }, 200)
+  } catch (error) {
+    console.error('AddLike error:', error)
+    return c.json({ message: '服务器内部错误' }, 500)
+  }
+})
+
 app.post('/test', async (c) => {
   const body = await c.req.parseBody()
   const file = body.file
