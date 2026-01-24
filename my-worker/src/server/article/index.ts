@@ -46,7 +46,7 @@ app.post('/setArticle', async (c) => {
       const title = body.title as string
       const summary = body.summary as string
       const content = body.content as string
-      const data = body.data as string
+      const date = body.date as string
       const category = body.category as string
 
 
@@ -80,7 +80,7 @@ app.post('/setArticle', async (c) => {
       const filePath = `articleCover/${fileName}`
       const uploadUrl = `https://${c.env.B2_BUCKET_NAME}.${c.env.B2_ENDPOINT}/${filePath}`
       console.log('Uploading cover to:', uploadUrl)
-  
+      
       const uploadResponse = await aws.fetch(uploadUrl, {
         method: 'PUT',
         headers: {
@@ -88,17 +88,22 @@ app.post('/setArticle', async (c) => {
         },
         body: arrayBuffer,
       })
-      console.log('Article insert result:')
+      
       if (!uploadResponse.ok) {
         return c.json({ message: '封面上传失败' }, 500)
       }
   
+      // 根据 date 生成随机时间戳作为主键 id
+      const baseTimestamp = date ? new Date(date).getTime() : Date.now()
+      const randomOffset = Math.floor(Math.random() * 1000) // 添加 0-999 的随机偏移
+      const articleId = baseTimestamp + randomOffset
+  
       // 插入文章记录
       const articleResult = await db
         .prepare(
-          'INSERT INTO article (authorId, content, title, category, summary, data, likes, views, coverUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO article (id, authorId, content, title, category, summary, date, likes, views, coverUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         )
-        .bind(authorId, content, title, category, summary, data, 0, 0, filePath)
+        .bind(articleId, authorId, content, title, category, summary, date, 0, 0, filePath)
         .run()
   
       if (articleResult.success) {
@@ -130,7 +135,7 @@ app.post('/setArticle', async (c) => {
       }
   
       const author = await db
-        .prepare('SELECT username, avatar, dynamicNum FROM user WHERE id = ?')
+        .prepare('SELECT username, avatar FROM user WHERE id = ?')
         .bind(article.authorId)
         .first()
 
@@ -162,7 +167,6 @@ app.post('/setArticle', async (c) => {
         ...article,
         author: {
           ...author,
-          avatar,
         },
       })
     } catch (error) {
@@ -183,7 +187,7 @@ app.post('/setArticle', async (c) => {
     try {
       const { results } = await db
         .prepare(
-          'SELECT id, userId, content, title, type, abstract, likes, favorites, link, coverUrl FROM article ORDER BY id DESC LIMIT 4',
+          'SELECT id, userId, content, title, category, abstract, likes, views, coverUrl FROM article ORDER BY id DESC LIMIT 10',
         )
         .all()
       if (!results || results.length === 0) {
@@ -195,7 +199,7 @@ app.post('/setArticle', async (c) => {
       for (const article of results) {
         const author = await db
           .prepare(
-            'SELECT username, followers, followings, avatar, dynamicNum FROM user WHERE id = ?',
+            'SELECT username, avatar FROM user WHERE id = ?',
           )
           .bind(article.userId)
           .first()
@@ -229,5 +233,34 @@ app.post('/setArticle', async (c) => {
     }
   })
 
+app.post('/test', async (c) => {
+  const body = await c.req.parseBody()
+  const file = body.file
+  if (!(file instanceof File)) {
+    return c.json({ message: '缺少封面文件' }, 400)
+  }
+  const arrayBuffer = await file.arrayBuffer()
+  const filePath = `articleCover/test_${file.name.split('.').pop()}`
+  const uploadUrl = `https://${c.env.B2_BUCKET_NAME}.${c.env.B2_ENDPOINT}/${filePath}`
+  console.log('Uploading cover to:', uploadUrl)
+  const aws = new AwsClient({
+    accessKeyId: c.env.B2_KEY_ID,
+    secretAccessKey: c.env.B2_APPLICATION_KEY,
+    service: 's3',
+    region: 'us-west-004',
+  })
+  const uploadResponse = await aws.fetch(uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': file.type,
+    },
+    body: arrayBuffer,
+  })
+  console.log('Upload result:', uploadResponse.ok)
+  if (!uploadResponse.ok) {
+    return c.json({ message: '封面上传失败' }, 500)
+  }
+  return c.json({ message: '测试上传成功' }, 200)
+})
 
 export default app

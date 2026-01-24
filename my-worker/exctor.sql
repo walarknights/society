@@ -1,8 +1,13 @@
-CREATE TABLE user (
+CREATE TABLE article (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    password TEXT NOT NULL,
-    avatar TEXT DEFAULT '/usersInfo/avatar/user_0.png',
-    dynamicNum INTEGER DEFAULT 0,
-    permissionLevel INTEGER DEFAULT 0
-)
+    authorId TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    category TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    likes INTEGER DEFAULT 0,
+    views INTEGER DEFAULT 0,
+    coverUrl TEXT,
+    FOREIGN KEY (authorId) REFERENCES users(id)
+);
