@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { AwsClient } from 'aws4fetch'
 import { sign, verify } from 'hono/jwt'
 import { Resend } from 'resend'
-import type { Env,User } from '../type'
+import type { Env,User,UserInfo } from '../type'
 
 const app = new Hono<{ Bindings: Env }>()
 
@@ -128,18 +128,111 @@ app.get('/getInfo', async (c) => {
   const payload = await c.req.json<{ id: number }>()
   const results = await db
     .prepare(
-      'SELECT id, username, followers, followings, avatar, dynamicNum, permissionLevel FROM user WHERE id = ?',
+      'SELECT id, username, email, avatarUrl, bio, organization, permissionLevel, createdAt, updatedAt FROM users WHERE id = ?',
     )
     .bind(payload.id)
     .first()
   return c.json(results ?? [])
 })
 
+app.get('/getCard/:id', async (c) => {
+  const db = c.env.DB
+  const payload = await c.req.json<{ id: number }>()
+  const userInfo = await db
+    .prepare(
+      'SELECT id, username, email, avatarUrl, bio, organization, permissionLevel, createdAt, updatedAt FROM users WHERE id = ?',
+    )
+    .bind(payload.id)
+    .first()
+  const tags = await db
+    .prepare('SELECT id, name FROM tags')
+    .all()
+  return c.json({ userInfo, tags })
+})
+
+app.post('/update',async(c) => {
+
+  const header = c.req.header('Content-Type')
+  console.log('Content-Type header:', header)
+  
+  if (!header || typeof header !== 'string' || !header.includes('multipart/form-data')) {
+    return c.json({ message: '不支持的内容类型，需要 multipart/form-data' }, 415)
+  }
+  const body = await c.req.parseBody()
+  const file = body.file
+  const bio = body.bio
+  const username = body.username
+  const userId = body.userId
+  if (!(file instanceof File)) {
+    return c.json({ message: '缺少封面文件' }, 400)
+  }
+  const aws = new AwsClient({
+    accessKeyId: c.env.B2_KEY_ID,
+    secretAccessKey: c.env.B2_APPLICATION_KEY,
+    service: 's3',
+    region: 'us-west-004',
+  })
+  const arrayBuffer = await file.arrayBuffer()
+  // 上传封面到 B2
+  const fileName = `user_${userId}.${file.name.split('.').pop()}`
+  const filePath = `userInfo/avatar/${fileName}`
+  const uploadUrl = `https://${c.env.B2_BUCKET_NAME}.${c.env.B2_ENDPOINT}/${filePath}`
+  console.log('Uploading cover to:', uploadUrl)
+
+  const uploadResponse = await aws.fetch(uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': file.type,
+    },
+    body: arrayBuffer,
+  })
+  if(!uploadResponse.ok){
+     return c.json({ message: '头像上传失败' }, 500)
+  }
+  const db = c.env.DB
+  // 更新用户信息
+  const result = await db
+    .prepare('UPDATE users SET bio = ?, username = ?, avatar = ? WHERE id = ?')
+    .bind(bio, username, filePath, userId)
+    .run()
+  if(!result.success){
+    return c.json({ message: '用户信息更新失败' }, 500)
+  }
+  return c.json({ message: '用户信息更新成功' })
+})
+
+app.post('/updateTags',async(c) => {
+  const payload = await c.req.json<{ userId: number; tagIds: number[] }>()
+  const userId = payload.userId
+  const tagIds = payload.tagIds
+  const db = c.env.DB
+  if(tagIds.length >= 3 || tagIds.length < 0){
+    return c.json({ message: '用户标签数量错误' }, 400)
+  }
+  if(tagIds.length === 0){
+    return c.json({ message: '用户标签更新成功' })
+  }
+
+  // 更新用户标签
+  for (const tagId of tagIds) {
+    const result = await db
+      .prepare('INSERT INTO userTags (userId, tagId) VALUES (?, ?)')
+      .bind(userId, tagId)
+      .run()
+
+    if (!result.success) {
+      return c.json({ message: '用户标签更新失败' }, 500)
+    }
+  }
+
+  return c.json({ message: '用户标签更新成功' })
+})
+
 app.post('/login', async (c) => {
   try {
-    const payload = await c.req.json<{ password: string; email: string }>()
-    if (!payload?.email || !payload?.password) {
-      return c.json({ error: 'email and password are required' }, 400)
+    const payload = await c.req.json<{ password: string; studentId: string }>()
+    if (!payload?.studentId || !payload?.password) {
+      return c.json({ error: 'studentId and password are required' }, 400)
     }
 
     const db = c.env.DB
@@ -149,8 +242,8 @@ app.post('/login', async (c) => {
     }
 
     const result = await db
-      .prepare('SELECT password FROM user WHERE email = ?')
-      .bind(payload.email)
+      .prepare('SELECT password FROM users WHERE studentId = ?')
+      .bind(payload.studentId)
       .first()
 
     if (!result) {
@@ -162,9 +255,9 @@ app.post('/login', async (c) => {
     }
     const userInfo = await db
       .prepare(
-        'SELECT id, username, avatar, dynamicNum, permissionLevel, email FROM user WHERE email = ?',
+        'SELECT * FROM users WHERE studentId = ?',
       )
-      .bind(payload.email)
+      .bind(payload.studentId)
       .first()
 
     if (!userInfo) {
@@ -215,9 +308,11 @@ app.post('/login', async (c) => {
       userId: userInfo.id as number,
       username: userInfo.username as string,
       avatar: (userInfo.avatar as string) || '/userInfo/avatar/user_0.png',
-      dynamicNum: (userInfo.dynamicNum as number) || 0,
+      bio: (userInfo.bio as string) || '',
+      organization: (userInfo.organization as string) || '',  
       permissionLevel: (userInfo.permissionLevel as number) || 0,
       email: (userInfo.email as string) || '',
+      updatedAt: userInfo.updatedAt as string,
       isLogin: true,
     }
 
@@ -249,7 +344,7 @@ app.post('/verifyToken', async (c) => {
     const db = c.env.DB
     const userInfo = await db
       .prepare(
-        'SELECT id, username, avatar, dynamicNum, permissionLevel,email FROM user WHERE id = ?',
+        'SELECT id, username, avatar, dynamicNum, permissionLevel,email FROM users WHERE id = ?',
       )
       .bind(decoded.userId)
       .first()
@@ -269,9 +364,11 @@ app.post('/verifyToken', async (c) => {
       userId: userInfo.id as number,
       username: userInfo.username as string,
       avatar: avatar,
-      dynamicNum: (userInfo.dynamicNum as number) || 0,
+      bio: (userInfo.bio as string) || '',
+      organization: (userInfo.organization as string) || '',
       permissionLevel: (userInfo.permissionLevel as number) || 0,
       email: (userInfo.email as string) || '',
+      updatedAt: userInfo.updatedAt as string,
       isLogin: true,
     }
 
@@ -287,17 +384,17 @@ app.post('/setUser', async (c) => {
   
   try {
     // 解析请求体
-    let payload: { username: string; password: string; email:string, verificationCode: string } | null = null
+    let payload: { studentId: string; password: string; email:string, verificationCode: string, tokenCode:string } | null = null
 
     try {
-      payload = await c.req.json<{ username: string; password: string; email: string, verificationCode: string }>()
+      payload = await c.req.json<{ studentId: string; password: string; email: string, verificationCode: string, tokenCode:string }>()
     } catch (parseError) {
       console.error('Failed to parse request body:', parseError)
       return c.json({ message: '请求格式错误，需要 JSON 格式', error: String(parseError) }, 400)
     }
 
-    if (!payload?.username || !payload?.password || !payload?.email || !payload?.verificationCode) {
-      return c.json({ message: 'username , password , email , verificationCode 是必填项' }, 400)
+    if (!payload?.studentId || !payload?.password || !payload?.email || !payload?.verificationCode || !payload?.tokenCode) {
+      return c.json({ message: 'studentId , password , email , verificationCode , tokenCode 是必填项' }, 400)
     }
 
     const db = c.env.DB
@@ -305,10 +402,16 @@ app.post('/setUser', async (c) => {
       console.error('Database not available in environment')
       return c.json({ message: '数据库连接失败' }, 500)
     }
-
+    const org = await db
+      .prepare('SELECT targetOrgName FROM orgTokens WHERE tokenCode = ?')
+      .bind(payload.tokenCode)
+      .first()
+    if (!org) {
+      return c.json({ message: '无效的组织邀请码' }, 400)
+    }
     // 检查邮箱是否已存在
     const existingUser = await db
-      .prepare('SELECT id FROM user WHERE email = ?')
+      .prepare('SELECT id FROM users WHERE email = ?')
       .bind(payload.email)
       .first()
 
@@ -324,15 +427,19 @@ app.post('/setUser', async (c) => {
     // 插入新用户
     const insertResult = await db
       .prepare(
-        'INSERT INTO user (username, password, avatar, dynamicNum, permissionLevel, email) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO users (studentId, password, email, username, avatarUrl, bio, organization, permissionLevel, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .bind(
-        payload.username,
+        payload.studentId,
         await hashPassword(payload.password),
+        payload.email,
+        payload.studentId,
         '/userInfo/avatar/user_0.png',
-        0,
-        0,
-        payload.email
+        '',
+        org.targetOrgName,
+        'member',
+        new Date().toISOString(),
+        new Date().toISOString(),
       )
       .run()
 
@@ -342,7 +449,7 @@ app.post('/setUser', async (c) => {
 
     // 获取新创建的用户信息
     const result = await db
-      .prepare('SELECT id FROM user WHERE email = ?')
+      .prepare('SELECT * FROM users WHERE email = ?')
       .bind(payload.email)
       .first()
 
@@ -352,9 +459,11 @@ app.post('/setUser', async (c) => {
 
     const userResponse: User = {
       userId: result.id as number,
-      username: payload.username,
+      username: payload.studentId,
       avatar: '/userInfo/avatar/user_0.png',
-      dynamicNum: 0,
+      bio: '',
+      organization: org.targetOrgName as string,
+      updatedAt: result.updatedAt as string,
       permissionLevel: 0,
       email: payload.email,
       isLogin: true,
@@ -376,4 +485,30 @@ app.post('/setUser', async (c) => {
   }
 })
 
+
+app.get('/userList', async (c) => {
+  const db = c.env.DB
+  const results = await db
+    .prepare('SELECT * FROM user')
+    .all()
+  const res: UserInfo[] = [] 
+  for (const user of results.results) {
+    let avatar = user.avatar as string
+    if (!avatar) {
+      avatar = '/userInfo/avatar/user_0.png'
+    }
+    avatar = await generatePresignedUrl(avatar, c.env)
+    res.push({
+      userId: user.id as number,
+      username: user.username as string,
+      avatar: avatar,
+      bio: (user.bio as string) || '',
+      organization: (user.organization as string) || '',
+      updatedAt: user.updatedAt as string,
+      permissionLevel: (user.permissionLevel as number) || 0,
+      email: (user.email as string) || '',
+    })
+  }
+  return c.json(res ?? [])
+})
 export default app

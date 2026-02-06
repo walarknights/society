@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import type { Env } from '../src/server/type'
 import userApi from '../src/server/user'
 import articleApi from '../src/server/article'
+import personalApi from '../src/server/personal'
 
 interface WorkerEnv extends Env {
     ASSETS: { fetch: (request: Request | string) => Promise<Response> }
@@ -25,6 +26,7 @@ app.use(
 app.get('/', (c) => c.text('OK'))
 app.route('/user', userApi)
 app.route('/article', articleApi)
+app.route('/personal',personalApi)
 
 app.all('*', async (c) => {
   return c.env.ASSETS.fetch(c.req.raw)

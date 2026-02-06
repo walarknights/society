@@ -3,7 +3,6 @@ import { AwsClient } from 'aws4fetch'
 import type { Env } from '../type'
 
 const app = new Hono<{ Bindings: Env }>()
-
 const generatePresignedUrl = async (path: string, env: Env): Promise<string> => {
     if (!path) return ''
     if (path.startsWith('http')) return path
@@ -187,7 +186,7 @@ app.post('/setArticle', async (c) => {
     try {
       const { results } = await db
         .prepare(
-          'SELECT id, userId, content, title, category, abstract, likes, views, coverUrl FROM article ORDER BY id DESC LIMIT 10',
+          'SELECT id, authorId, content, title, category, summary, likes, views, coverUrl FROM article ORDER BY id DESC LIMIT 10',
         )
         .all()
       if (!results || results.length === 0) {
@@ -201,11 +200,11 @@ app.post('/setArticle', async (c) => {
           .prepare(
             'SELECT username, avatar FROM user WHERE id = ?',
           )
-          .bind(article.userId)
+          .bind(article.authorId)
           .first()
         if (!author) {
           console.log(
-            `Author not found for article ${article.id as string}, userId: ${article.userId as string}`,
+            `Author not found for article ${article.id as string}, authorId: ${article.authorId as string}`,
           )
           continue
         }
@@ -284,33 +283,11 @@ app.post('/addLike', async (c) => {
 })
 
 app.post('/test', async (c) => {
-  const body = await c.req.parseBody()
-  const file = body.file
-  if (!(file instanceof File)) {
-    return c.json({ message: '缺少封面文件' }, 400)
-  }
-  const arrayBuffer = await file.arrayBuffer()
-  const filePath = `articleCover/test_${file.name.split('.').pop()}`
-  const uploadUrl = `https://${c.env.B2_BUCKET_NAME}.${c.env.B2_ENDPOINT}/${filePath}`
-  console.log('Uploading cover to:', uploadUrl)
-  const aws = new AwsClient({
-    accessKeyId: c.env.B2_KEY_ID,
-    secretAccessKey: c.env.B2_APPLICATION_KEY,
-    service: 's3',
-    region: 'us-west-004',
-  })
-  const uploadResponse = await aws.fetch(uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': file.type,
-    },
-    body: arrayBuffer,
-  })
-  console.log('Upload result:', uploadResponse.ok)
-  if (!uploadResponse.ok) {
-    return c.json({ message: '封面上传失败' }, 500)
-  }
-  return c.json({ message: '测试上传成功' }, 200)
+   const db = c.env.DB
+   if (!db) {
+     return c.json({ message: '数据库连接失败' }, 500)
+   }
+   return c.json({ message: 'Test route working' })
 })
 
 export default app

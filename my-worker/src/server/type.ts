@@ -25,21 +25,32 @@ export interface User {
   userId: number
   username: string
   avatar: string
-  dynamicNum: number
+  bio: string
+  organization: string
+  updatedAt: string
   permissionLevel: number
   email: string
   isLogin: boolean
 }
-
 export interface UserInfo {
-  id: number
+  userId: number
   username: string
-  password: string
-  followers: number
-  followings: number
   avatar: string
-  dynamicNum: number
+  bio: string
+  organization: string
+  updatedAt: string
+  permissionLevel: number
+  email: string
 }
+
+export interface orgToken {
+  tokenCode: string
+  targetOrgName: string
+  isActive: boolean
+  createBy: UserInfo
+}
+
+
 
 export interface UserInfoSet {
   id: number
