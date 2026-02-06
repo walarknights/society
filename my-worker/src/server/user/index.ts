@@ -18,6 +18,9 @@ const generatePresignedUrl = async (path: string, env: Env): Promise<string> => 
     if (!path) return ''
     if (path.startsWith('http')) return path
 
+    const filePath = path.startsWith('/') ? path.substring(1) : path
+    const s3Url = `https://${env.B2_BUCKET_NAME}.${env.B2_ENDPOINT}/${filePath}`
+
     try {
       const aws = new AwsClient({
         accessKeyId: env.B2_KEY_ID,
@@ -25,9 +28,6 @@ const generatePresignedUrl = async (path: string, env: Env): Promise<string> => 
         service: 's3',
         region: 'us-west-004',
       })
-  
-      const filePath = path.startsWith('/') ? path.substring(1) : path
-      const s3Url = `https://${env.B2_BUCKET_NAME}.${env.B2_ENDPOINT}/${filePath}`
   
       const signedRequest = await aws.sign(s3Url, {
         method: 'GET',

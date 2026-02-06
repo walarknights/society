@@ -30,17 +30,17 @@ const generatePresignedUrl = async (path: string, env: Env): Promise<string> => 
   }
 
 
-  app.get('/getPersonalInfo/:id',async (c) => {
-    const userId = c.req.param('id');
-    if (!userId) return c.json({ message: '缺少用户id' }, 400)
-    const db = c.env.DB;
-    try {
-        const user = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
-        if (!user) return c.json({ message: '用户不存在' }, 404);
-        return c.json({ message: '获取用户信息成功', user }, 200);
-    } catch (error) {
-        return c.json({ message: '获取用户信息失败', error }, 500);
-    }
+app.get('/getPersonalInfo/:id',async (c) => {
+const userId = c.req.param('id');
+if (!userId) return c.json({ message: '缺少用户id' }, 400)
+const db = c.env.DB;
+try {
+    const user = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
+    if (!user) return c.json({ message: '用户不存在' }, 404);
+    return c.json({ message: '获取用户信息成功', user }, 200);
+} catch (error) {
+    return c.json({ message: '获取用户信息失败', error }, 500);
+}
 })
 
 
@@ -95,7 +95,7 @@ app.get('/getPersonalFavorites/:id',async (c) => {
     }
 })
 
-app.get('/personalHis/:id',async (c) => {
+app.get('/getPersonalHistory/:id',async (c) => {
     const userId = c.req.param('id');
     if (!userId) return c.json({ message: '缺少用户id' }, 400)
     const db = c.env.DB;
