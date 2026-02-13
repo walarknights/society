@@ -192,7 +192,7 @@ app.post('/update',async(c) => {
   const db = c.env.DB
   // 更新用户信息
   const result = await db
-    .prepare('UPDATE users SET bio = ?, username = ?, avatar = ? WHERE id = ?')
+    .prepare('UPDATE users SET bio = ?, username = ?, avatarUrl = ? WHERE id = ?')
     .bind(bio, username, filePath, userId)
     .run()
   if(!result.success){
@@ -265,7 +265,7 @@ app.post('/login', async (c) => {
     }
 
     // 生成 S3 预签名 URL
-    let avatar = userInfo.avatar as string
+    let avatar = userInfo.avatarUrl as string
 
     // 如果有 avatar 路径，生成预签名 URL
     if (avatar) {
@@ -323,6 +323,7 @@ app.post('/login', async (c) => {
         exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
       },
       c.env.JWT_SECRET,
+      'HS256'
     )
 
     return c.json({ userResponse, token })
@@ -344,7 +345,7 @@ app.post('/verifyToken', async (c) => {
     const db = c.env.DB
     const userInfo = await db
       .prepare(
-        'SELECT id, username, avatar, dynamicNum, permissionLevel,email FROM users WHERE id = ?',
+        'SELECT * FROM users WHERE id = ?',
       )
       .bind(decoded.userId)
       .first()
@@ -353,7 +354,7 @@ app.post('/verifyToken', async (c) => {
       return c.json({ valid: false, message: 'User not found' }, 404)
     }
 
-    let avatar = userInfo.avatar as string
+    let avatar = userInfo.avatarUrl as string
     if (!avatar) {
       avatar = '/userInfo/avatar/user_0.png'
     }
@@ -476,6 +477,7 @@ app.post('/setUser', async (c) => {
         exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24, // 24 hours
       },
       c.env.JWT_SECRET,
+      'HS256'
     )
 
     return c.json({ message: '注册成功', user: userResponse, token: jwtToken })
@@ -489,11 +491,11 @@ app.post('/setUser', async (c) => {
 app.get('/userList', async (c) => {
   const db = c.env.DB
   const results = await db
-    .prepare('SELECT * FROM user')
+    .prepare('SELECT * FROM users')
     .all()
   const res: UserInfo[] = [] 
   for (const user of results.results) {
-    let avatar = user.avatar as string
+    let avatar = user.avatarUrl as string
     if (!avatar) {
       avatar = '/userInfo/avatar/user_0.png'
     }
