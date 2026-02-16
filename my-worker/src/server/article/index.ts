@@ -75,7 +75,7 @@ app.post('/setArticle', async (c) => {
       })
       const arrayBuffer = await file.arrayBuffer()
       // 上传封面到 B2
-      const fileName = `cover_0.${file.name.split('.').pop()}`
+      const fileName = `cover_${Date.now()}.${file.name.split('.').pop()}`
       const filePath = `articleCover/${fileName}`
       const uploadUrl = `https://${c.env.B2_BUCKET_NAME}.${c.env.B2_ENDPOINT}/${filePath}`
       console.log('Uploading cover to:', uploadUrl)
@@ -114,7 +114,120 @@ app.post('/setArticle', async (c) => {
       return c.json({ message: '服务器内部错误', error: String(error) }, 500)
     }
   })
-  
+
+
+app.post('/editArticle', async (c) => {
+    console.log('=== Edit article request received ===')
+    try {
+      const header = c.req.header('Content-Type')
+      if (!header || typeof header !== 'string' || !header.includes('multipart/form-data')) {
+        return c.json({ message: '不支持的内容类型，需要 multipart/form-data' }, 415)
+      }
+
+      const body = await c.req.parseBody()
+      const articleId = body.articleId
+      const permissionLevel = body.permissionLevel
+      const authorId = body.authorId ? Number(body.authorId) : null
+
+      if (!articleId || !authorId) {
+        return c.json({ message: '无效的请求参数' }, 400)
+      }
+
+      const db = c.env.DB
+      if (!db) {
+        return c.json({ message: '数据库连接失败' }, 500)
+      }
+
+      const exists = await db.prepare('SELECT id FROM article WHERE id = ?')
+        .bind(articleId)
+        .first()
+      if (!exists) {
+        return c.json({ message: '文章不存在' }, 403)
+      }
+      const allow1 = await db.prepare('SELECT id FROM article WHERE id = ? AND authorId = ?')
+      .bind(articleId, authorId )
+      .first()
+      if (!allow1 || permissionLevel !== 'admin') {
+        return c.json({ message: '无权修改' }, 403)
+      }
+      const updates: string[] = []
+      const values: any[] = []
+
+      if (body.title) {
+        updates.push('title = ?')
+        values.push(body.title)
+      }
+      if (body.summary) {
+        updates.push('summary = ?')
+        values.push(body.summary)
+      }
+      if (body.content) {
+        updates.push('content = ?')
+        values.push(body.content)
+      }
+      if (body.category) {
+        updates.push('category = ?')
+        values.push(body.category)
+      }
+
+      const file = body.file
+      if (file instanceof File) {
+        const aws = new AwsClient({
+          accessKeyId: c.env.B2_KEY_ID,
+          secretAccessKey: c.env.B2_APPLICATION_KEY,
+          service: 's3',
+          region: 'us-west-004',
+        })
+        const arrayBuffer = await file.arrayBuffer()
+        const res = await db.prepare('SELECT coverUrl FROM article WHERE id = ?').bind(articleId).first()
+        if(!res) {
+          return c.json({ message: '文章不存在' }, 404)
+        }
+        let fileName = `cover_${Date.now()}.${file.name.split('.').pop()}`
+        if (res.coverUrl) {
+          fileName = res.coverUrl as string
+        }
+        const filePath = `articleCover/${fileName}`
+        const uploadUrl = `https://${c.env.B2_BUCKET_NAME}.${c.env.B2_ENDPOINT}/${filePath}`
+        
+        const uploadResponse = await aws.fetch(uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': file.type,
+          },
+          body: arrayBuffer,
+        })
+        
+        if (uploadResponse.ok) {
+           updates.push('coverUrl = ?')
+           values.push(filePath)
+        } else {
+           console.error('Failed to upload new cover')
+        }
+      }
+
+      if (updates.length === 0) {
+          return c.json({ message: '没有需要更新的内容' }, 200)
+      }
+
+      values.push(articleId)
+      const query = `UPDATE article SET ${updates.join(', ')} WHERE id = ?`
+      
+      const result = await db.prepare(query)
+        .bind(...values)
+        .run()
+
+      if (result.success) {
+        return c.json({ message: '更新成功' }, 200)
+      }
+      return c.json({ message: '更新失败' }, 500)
+
+    } catch (error) {
+       console.error('EditArticle error:', error)
+       return c.json({ message: '服务器内部错误', error: String(error) }, 500)
+    }
+})
+
   // 获取文章详情
   app.get('/specific/:id', async (c) => {
     const id = c.req.param('id')

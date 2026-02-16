@@ -311,7 +311,7 @@ app.post('/login', async (c) => {
       avatar: (userInfo.avatarUrl as string) || '/userInfo/avatar/user_0.png',
       bio: (userInfo.bio as string) || '',
       organization: (userInfo.organization as string) || '',  
-      permissionLevel: (userInfo.permissionLevel as number) || 0,
+      permissionLevel: (userInfo.permissionLevel as string) || 'member',
       email: (userInfo.email as string) || '',
       updatedAt: userInfo.updatedAt as string,
       isLogin: true,
@@ -368,7 +368,7 @@ app.post('/verifyToken', async (c) => {
       avatar: avatar,
       bio: (userInfo.bio as string) || '',
       organization: (userInfo.organization as string) || '',
-      permissionLevel: (userInfo.permissionLevel as number) || 0,
+      permissionLevel: (userInfo.permissionLevel as string) || '',
       email: (userInfo.email as string) || '',
       updatedAt: userInfo.updatedAt as string,
       isLogin: true,
@@ -386,17 +386,17 @@ app.post('/setUser', async (c) => {
   
   try {
     // 解析请求体
-    let payload: { studentId: string; password: string; email:string, verificationCode: string, tokenCode:string } | null = null
+    let payload: { studentId: string; password: string; email:string, verificationCode: string, tokenCode:string,username:string } | null = null
 
     try {
-      payload = await c.req.json<{ studentId: string; password: string; email: string, verificationCode: string, tokenCode:string }>()
+      payload = await c.req.json<{ studentId: string; password: string; email: string, verificationCode: string, tokenCode:string,username:string }>()
     } catch (parseError) {
       console.error('Failed to parse request body:', parseError)
       return c.json({ message: '请求格式错误，需要 JSON 格式', error: String(parseError) }, 400)
     }
 
-    if (!payload?.studentId || !payload?.password || !payload?.email || !payload?.verificationCode || !payload?.tokenCode) {
-      return c.json({ message: 'studentId , password , email , verificationCode , tokenCode 是必填项' }, 400)
+    if (!payload?.studentId || !payload?.password || !payload?.email || !payload?.verificationCode || !payload?.tokenCode || !payload?.username) {
+      return c.json({ message: 'studentId , password , email , verificationCode , tokenCode , username 是必填项' }, 400)
     }
 
     const db = c.env.DB
@@ -435,7 +435,7 @@ app.post('/setUser', async (c) => {
         payload.studentId,
         await hashPassword(payload.password),
         payload.email,
-        payload.studentId,
+        payload.username,
         '/userInfo/avatar/user_0.png',
         '',
         org.targetOrgName,
@@ -466,7 +466,7 @@ app.post('/setUser', async (c) => {
       bio: '',
       organization: org.targetOrgName as string,
       updatedAt: result.updatedAt as string,
-      permissionLevel: 0,
+      permissionLevel: 'member',
       email: payload.email,
       isLogin: true,
     }

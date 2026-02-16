@@ -36,7 +36,7 @@ export interface User {
   bio: string
   organization: string
   updatedAt: string
-  permissionLevel: number
+  permissionLevel: string
   email: string
   isLogin: boolean
 }
