@@ -20,6 +20,14 @@ export interface Article {
   coverUrl: string
 }
 
+export interface ArticleSimpleInfo {
+  id: number
+  title: string
+  abstract: string
+  coverUrl: string
+}
+
+
 // user 类型定义
 export interface User {
   userId: number
@@ -43,15 +51,6 @@ export interface UserInfo {
   email: string
 }
 
-export interface orgToken {
-  tokenCode: string
-  targetOrgName: string
-  isActive: boolean
-  createBy: UserInfo
-}
-
-
-
 export interface UserInfoSet {
   id: number
   username: string
@@ -63,13 +62,23 @@ export interface UserInfoSet {
   isLogin: boolean
 }
 
-// 文章信息类型
-export interface ArticleSimpleInfo {
-  id: number
-  title: string
-  abstract: string
-  coverUrl: string
+export interface orgToken {
+  tokenCode: string
+  targetOrgName: string
+  isActive: boolean
+  createBy: UserInfo
 }
 
-// 创建一个带类型的 Hono App 类型，方便在各模块中使用
+export interface ActiveResponse {
+  author: UserInfo
+  title: string
+  content: string
+  abstract: string
+  createAt: string
+  coverUrl: string
+  likes: number
+  comments: number
+  
+}
+
 export type HonoApp = Hono<{ Bindings: Env }>

@@ -35,6 +35,7 @@ const generatePresignedUrl = async (path: string, env: Env): Promise<string> => 
       })
       return signedRequest.url
     } catch (error) {
+      
       console.error('Failed to generate signed URL:', error)
       const filePath = path.startsWith('/') ? path.substring(1) : path
       return `https://${env.B2_BUCKET_NAME}.${env.B2_ENDPOINT}/${filePath}`
@@ -303,11 +304,11 @@ app.post('/login', async (c) => {
       }
     }
 
-    userInfo.avatar = avatar
+    userInfo.avatarUrl = avatar
     const userResponse: User = {
       userId: userInfo.id as number,
       username: userInfo.username as string,
-      avatar: (userInfo.avatar as string) || '/userInfo/avatar/user_0.png',
+      avatar: (userInfo.avatarUrl as string) || '/userInfo/avatar/user_0.png',
       bio: (userInfo.bio as string) || '',
       organization: (userInfo.organization as string) || '',  
       permissionLevel: (userInfo.permissionLevel as number) || 0,

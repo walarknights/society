@@ -63,7 +63,7 @@ app.post('/setArticle', async (c) => {
       if (!db) {
         return c.json({ message: '数据库连接失败' }, 500)
       }
-      const user = await db.prepare('SELECT id FROM user WHERE id = ?').bind(authorId).first()
+      const user = await db.prepare('SELECT id FROM users WHERE id = ?').bind(authorId).first()
       if (!user) {
         return c.json({ message: '用户Id错误' }, 401)
       }
@@ -134,7 +134,7 @@ app.post('/setArticle', async (c) => {
       }
   
       const author = await db
-        .prepare('SELECT username, avatar FROM user WHERE id = ?')
+        .prepare('SELECT username, avatarUrl FROM users WHERE id = ?')
         .bind(article.authorId)
         .first()
 
@@ -156,12 +156,12 @@ app.post('/setArticle', async (c) => {
         }
       }
   
-      let avatar = author?.avatar as string
+      let avatar = author?.avatarUrl as string
       if (avatar && !avatar.startsWith('http')) {
         avatar = await generatePresignedUrl(avatar, c.env)
-        author.avatar = avatar
+        author.avatarUrl = avatar
       }
-  
+
       return c.json({
         ...article,
         author: {
@@ -186,7 +186,7 @@ app.post('/setArticle', async (c) => {
     try {
       const { results } = await db
         .prepare(
-          'SELECT id, authorId, content, title, category, summary, likes, views, coverUrl FROM article ORDER BY id DESC LIMIT 10',
+          'SELECT id, authorId, title, content, category, summary, date, likes, views, coverUrl FROM article ORDER BY date DESC LIMIT 10',
         )
         .all()
       if (!results || results.length === 0) {
@@ -198,7 +198,7 @@ app.post('/setArticle', async (c) => {
       for (const article of results) {
         const author = await db
           .prepare(
-            'SELECT username, avatar FROM user WHERE id = ?',
+            'SELECT username, avatarUrl FROM users WHERE id = ?',
           )
           .bind(article.authorId)
           .first()
@@ -206,20 +206,20 @@ app.post('/setArticle', async (c) => {
           console.log(
             `Author not found for article ${article.id as string}, authorId: ${article.authorId as string}`,
           )
-          continue
+          return c.json({ message: '未找到对应作者' }, 404)
         }
         let coverUrl = article.coverUrl as string
         if (coverUrl && !coverUrl.startsWith('http')) {
           coverUrl = await generatePresignedUrl(coverUrl, c.env)
           article.coverUrl = coverUrl
         }
-  
-        let avatar = author?.avatar as string
+
+        let avatar = author?.avatarUrl as string
         if (avatar && !avatar.startsWith('http')) {
           avatar = await generatePresignedUrl(avatar, c.env)
-          author.avatar = avatar
+          author.avatarUrl = avatar
         }
-  
+
         articles.push({
           ...article,
           author: { ...author },

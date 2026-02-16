@@ -1,9 +1,14 @@
--- 建表语句
-CREATE TABLE favorites (
-    userId TEXT NOT NULL,
-    articleId TEXT NOT NULL,
-    PRIMARY KEY (userId, articleId),
-    FOREIGN KEY (userId) REFERENCES users(id),
-    FOREIGN KEY (articleId) REFERENCES articles(id)
-);
 
+
+CREATE TABLE active (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organizerId TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    abstract TEXT NOT NULL,
+    createAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    coverUrl TEXT,
+    likes INTEGER DEFAULT 0,
+    comments INTEGER DEFAULT 0,
+    FOREIGN KEY (organizerId) REFERENCES users(id)
+);
