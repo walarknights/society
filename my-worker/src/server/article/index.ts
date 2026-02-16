@@ -228,123 +228,156 @@ app.post('/editArticle', async (c) => {
     }
 })
 
-  // 获取文章详情
-  app.get('/specific/:id', async (c) => {
-    const id = c.req.param('id')
-    if (!id) return c.json({ message: '缺少文章id' }, 400)
-  
-    const db = c.env.DB
-    try {
-      const article = await db
-        .prepare(
-          'SELECT id, authorId, content, title, category, summary, likes, views, coverUrl FROM article WHERE id = ?',
-        )
-        .bind(id)
-        .first()
-  
-      if (!article) {
-        return c.json({ message: '未找到对应文章' }, 404)
-      }
-  
+app.post('/deleteArticle', async (c) => {
+try {
+  const articleId = await c.req.json<{ articleId: number }>()
+  if (!articleId) {
+    return c.json({ message: '缺少文章ID' }, 400)
+  }
+
+  const db = c.env.DB
+  if (!db) {
+    return c.json({ message: '数据库连接失败' }, 500)
+  }
+
+  const exists = await db.prepare('SELECT id FROM article WHERE id = ?')
+    .bind(articleId)
+    .first()
+  if (!exists) {
+    return c.json({ message: '文章不存在' }, 403)
+  }
+
+  const result = await db.prepare('DELETE FROM article WHERE id = ?')
+    .bind(articleId)
+    .run()
+
+  if (result.success) {
+    return c.json({ message: '删除成功' }, 200)
+  }
+  return c.json({ message: '删除失败' }, 500)
+
+}catch (error) {
+  console.error('DeleteArticle error:', error)
+  return c.json({ message: '请求格式错误，需要 JSON 格式', error: String(error) }, 400)
+}
+})
+
+// 获取文章列表
+app.get('/list', async (c) => {
+  const db = c.env.DB
+  if (!db) {
+    console.error('Database connection failed')
+    return c.json({ message: '数据库连接失败' }, 500)
+  } else {
+    console.log('Database connection successful')
+  }
+  try {
+    const { results } = await db
+      .prepare(
+        'SELECT id, authorId, title, content, category, summary, date, likes, views, coverUrl FROM article ORDER BY date DESC LIMIT 10',
+      )
+      .all()
+    if (!results || results.length === 0) {
+      console.log('No articles found')
+
+      return c.json({ message: '暂无文章' }, 200)
+    }
+    const articles = []
+    for (const article of results) {
       const author = await db
-        .prepare('SELECT username, avatarUrl FROM users WHERE id = ?')
+        .prepare(
+          'SELECT username, avatarUrl FROM users WHERE id = ?',
+        )
         .bind(article.authorId)
         .first()
-
-    if (!author) {
-        console.log(`Author not found for article ${article.id as string}, authorId: ${article.authorId as string}`)
+      if (!author) {
+        console.log(
+          `Author not found for article ${article.id as string}, authorId: ${article.authorId as string}`,
+        )
         return c.json({ message: '未找到对应作者' }, 404)
-    }
-      let coverUrl = '' as string
-      if (article.coverUrl === null) {
-        coverUrl = ''
-      } else {
-        coverUrl = article.coverUrl as string
       }
-  
-      if (coverUrl) {
-        if (coverUrl && !coverUrl.startsWith('http')) {
-          coverUrl = await generatePresignedUrl(coverUrl, c.env)
-          article.coverUrl = coverUrl
-        }
+      let coverUrl = article.coverUrl as string
+      if (coverUrl && !coverUrl.startsWith('http')) {
+        coverUrl = await generatePresignedUrl(coverUrl, c.env)
+        article.coverUrl = coverUrl
       }
-  
+
       let avatar = author?.avatarUrl as string
       if (avatar && !avatar.startsWith('http')) {
         avatar = await generatePresignedUrl(avatar, c.env)
         author.avatarUrl = avatar
       }
 
-      return c.json({
+      articles.push({
         ...article,
-        author: {
-          ...author,
-        },
+        author: { ...author },
       })
-    } catch (error) {
-      console.error('GetArticle error:', error)
-      return c.json({ message: '服务器内部错误' }, 500)
     }
-  })
-  
-  // 获取文章列表
-  app.get('/list', async (c) => {
-    const db = c.env.DB
-    if (!db) {
-      console.error('Database connection failed')
-      return c.json({ message: '数据库连接失败' }, 500)
+    return c.json(articles, 202)
+  } catch (error) {
+    console.error('GetArticleList error:', error)
+    return c.json({ message: '服务器内部错误' }, 500)
+  }
+})
+
+
+app.get('/specific/:id', async (c) => {
+  const id = c.req.param('id')
+  if (!id) return c.json({ message: '缺少文章id' }, 400)
+
+  const db = c.env.DB
+  try {
+    const article = await db
+      .prepare(
+        'SELECT id, authorId, content, title, category, summary, likes, views, coverUrl,date FROM article WHERE id = ?',
+      )
+      .bind(id)
+      .first()
+
+    if (!article) {
+      return c.json({ message: '未找到对应文章' }, 404)
+    }
+
+    const author = await db
+      .prepare('SELECT username, avatarUrl FROM users WHERE id = ?')
+      .bind(article.authorId)
+      .first()
+
+  if (!author) {
+      console.log(`Author not found for article ${article.id as string}, authorId: ${article.authorId as string}`)
+      return c.json({ message: '未找到对应作者' }, 404)
+  }
+    let coverUrl = '' as string
+    if (article.coverUrl === null) {
+      coverUrl = ''
     } else {
-      console.log('Database connection successful')
+      coverUrl = article.coverUrl as string
     }
-    try {
-      const { results } = await db
-        .prepare(
-          'SELECT id, authorId, title, content, category, summary, date, likes, views, coverUrl FROM article ORDER BY date DESC LIMIT 10',
-        )
-        .all()
-      if (!results || results.length === 0) {
-        console.log('No articles found')
-  
-        return c.json({ message: '暂无文章' }, 200)
-      }
-      const articles = []
-      for (const article of results) {
-        const author = await db
-          .prepare(
-            'SELECT username, avatarUrl FROM users WHERE id = ?',
-          )
-          .bind(article.authorId)
-          .first()
-        if (!author) {
-          console.log(
-            `Author not found for article ${article.id as string}, authorId: ${article.authorId as string}`,
-          )
-          return c.json({ message: '未找到对应作者' }, 404)
-        }
-        let coverUrl = article.coverUrl as string
-        if (coverUrl && !coverUrl.startsWith('http')) {
-          coverUrl = await generatePresignedUrl(coverUrl, c.env)
-          article.coverUrl = coverUrl
-        }
 
-        let avatar = author?.avatarUrl as string
-        if (avatar && !avatar.startsWith('http')) {
-          avatar = await generatePresignedUrl(avatar, c.env)
-          author.avatarUrl = avatar
-        }
-
-        articles.push({
-          ...article,
-          author: { ...author },
-        })
+    if (coverUrl) {
+      if (coverUrl && !coverUrl.startsWith('http')) {
+        coverUrl = await generatePresignedUrl(coverUrl, c.env)
+        article.coverUrl = coverUrl
       }
-      return c.json(articles, 202)
-    } catch (error) {
-      console.error('GetArticleList error:', error)
-      return c.json({ message: '服务器内部错误' }, 500)
     }
-  })
 
+    let avatar = author?.avatarUrl as string
+    if (avatar && !avatar.startsWith('http')) {
+      avatar = await generatePresignedUrl(avatar, c.env)
+      author.avatarUrl = avatar
+    }
+
+    return c.json({
+      ...article,
+      author: {
+        ...author,
+      },
+    })
+  } catch (error) {
+    console.error('GetArticle error:', error)
+    return c.json({ message: '服务器内部错误' }, 500)
+  }
+})
 app.post('/addView', async (c) => {
   const body = await c.req.parseBody()
   const articleId = body.articleId
